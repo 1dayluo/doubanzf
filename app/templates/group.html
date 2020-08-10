@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<form action='/group_rec' method='POST' id='submitform'>
+<h3>满足要求的小组</h3>
+    <button type="submit" class="btn btn-primary btn-success">Submit</button>
+{% from "_checkbox.html" import render_checkbox %}
+{% for group in grouplist %}
+
+{{ render_checkbox(group) }}
+{% endfor %}
+</form>
+
+
+{% endblock %}

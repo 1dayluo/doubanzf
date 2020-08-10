@@ -1,0 +1,5 @@
+{% macro render_checkbox(group) %}
+<div class="checkbox">
+  <label><input type="checkbox" name="check" value="{{ group.group_link }}">{{ group.group_name }} <br> {{ group.group_intruduction }}</label>
+</div>
+{% endmacro %}

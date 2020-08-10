@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<form action='/group_rec' method='POST' id='submitform'>
+<h3>房源</h3>
+    <button type="submit" class="btn btn-primary btn-success">Submit</button>
+{% from "_checkbox.html" import render_checkbox %}
+{% for topic in topics %}
+
+{{ render_checkbox(topic) }}
+{% endfor %}
+</form>
+
+
+{% endblock %}

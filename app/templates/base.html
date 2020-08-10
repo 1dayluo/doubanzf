@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="http://cdn.bootcss.com/jquery/3.1.1/jquery.min.js"></script>
+    <link href="http://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+    <script src="http://cdn.bootcss.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <meta charset="UTF-8">
+    <title>租房帮手</title>
+</head>
+<body>
+<div>
+    <div class="center-block">
+             {% block content %}{% endblock %}
+
+    </div>
+</div>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="{{
+  url_for('static', filename='jquery-3.5.1.js') }}">\x3C/script>')</script>
+<script type=text/javascript>
+  $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+</script>
+</body>
+</html>
