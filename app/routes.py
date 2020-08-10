@@ -81,4 +81,5 @@ def test_api():
     for i in groups():
         result.append(i)
 
+    print(len(result))
     return jsonify(result)

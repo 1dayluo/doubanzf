@@ -8,14 +8,22 @@ import multiprocessing
 from tqdm import tqdm
 import time
 import asyncio
-
-
+from collections import namedtuple
+import aiohttp
 burp0_headers = {"Connection": "close", "Upgrade-Insecure-Requests": "1",
                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36",
                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
                  "Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document",
                  "Accept-Language": "zh-CN,zh;q=0.9"}
 
+
+async def async_get_response(url,headers):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url,timeout=30,headers=burp0_headers) as response:
+            # assert response.status == 200
+            # html = await response.read()
+            content = await response.text()
+            return content
 def city_group(city=None):
 
 
@@ -66,9 +74,15 @@ def save_group(results):
         connection.execute(sql.format(group['group_link'],group['group_name'], group['group_intruduction']))
         connection.commit()
 
-def _content(link):
-    response = requests.get(link,headers=burp0_headers)
-    soup = BeautifulSoup(response.text,'html.parser')
+async def _content(link):
+    """
+    获取帖子内容
+    :param link:
+    :return:
+    """
+    # response = requests.get(link,headers=burp0_headers)
+    content = await async_get_response(link,headers=burp0_headers)
+    soup = BeautifulSoup(content,'html.parser')
     imgs = []
     content = ''
     for div in soup.find_all('div',attrs={'class':'rich-content topic-richtext'}):
@@ -79,28 +93,30 @@ def _content(link):
 
     return (content,imgs)
 
-def _topics(text):
+async def _topics(text):
     soup = BeautifulSoup(text, 'html.parser')
     topic_list = []
+    post_detail = namedtuple('POST',['topic_link','topic_title','topic_date','topic_content','topic_imgs'])
     for topic in soup.find_all('tr', attrs={'class': ''}):
-        topic_content, topic_imgs = _content(topic.a['href'])
-        topic_dict = {
-            'topic_link': topic.a['href'],
-            'topic_title': topic.a['title'],
-            'topic_date': topic.find('td', attrs={'class': 'time'}).text,
-            'topic_content':topic_content,
-            'topic_imgs':topic_imgs
-        }
-        return topic_dict
-        # yield topic_dict
-        # topic_list.append(topic_dict)
-    # return topic_list
-    # return topic_dict
-    # yield topic_dict
+        topic_content, topic_imgs = await _content(topic.a['href'])
+        # topic_dict = {
+        #     'topic_link': topic.a['href'],
+        #     'topic_title': topic.a['title'],
+        #     'topic_date': topic.find('td', attrs={'class': 'time'}).text,
+        #     'topic_content':topic_content,
+        #     'topic_imgs':topic_imgs
+        # }
+        post = post_detail(topic.a['href'],topic.a['title'],topic.find('td', attrs={'class': 'time'}).text,topic_content,topic_imgs)
+        topic_list.append(post)
+
+    return topic_list
+
 def _topic_page_2(text):
     soup = BeautifulSoup(text, 'html.parser')
+    page_2_link = ''
     for more in soup.find_all('div', attrs={'class': 'group-topics-more'}):
         page_2_link = more.a['href']
+
     return page_2_link
 
 # def post_get(grouplist):
@@ -127,40 +143,59 @@ def _topic_page_2(text):
 #             crawler_page += 1
 #         pprint(topic_list)
 #     return topic_list
+
+
 def worker(group_links):
     """
     :param grouplist: group's link list
     :return:default 20 page's posts in group
     """
-    for group_link in group_links:
-        topic_list = []
-        crawler_page = 0
-        # print(group_link)
-        # topic_list.append(_topics(group_link))
-        page_1 = requests.get(group_link, headers=burp0_headers)
-        yield _topics(page_1.text)
-        # topic_list.extend(await _topics(page_1.text))
+    # for group_link in group_links:
+    async def run(work_queue,res_queue,sleep_time=3):
+        while not work_queue.empty():
+            group_link = work_queue.get_nowait()
+            topic_list = []
+            crawler_page = 0
+            print(group_link)
+            # topic_list.append(_topics(group_link))
 
-        page_2_link = _topic_page_2(page_1.text)
-        page_2 = BeautifulSoup(requests.get(page_2_link,headers=burp0_headers).text, 'html.parser')
-        next_page = [ span.a['href'] for span in page_2.find_all('link',attrs={'rel':'next'})][0]
-        while True:
-            if crawler_page >= 5:
-                break
-            if next_page:
-                page_2 = requests.get(next_page, headers=burp0_headers)
-                yield _topics(page_2.text)
-                # topic_list.extend(await _topics(page_2.text))
-                topic_list.append(_topics(next_page))
-                page_next = BeautifulSoup(page_2.text, 'html.parser')
-                next_page = [span.a['href'] for span in page_next.find_all('link', attrs={'rel': 'next'})][0]
-            else:
-                break
-            crawler_page += 1
+            page_1 = await async_get_response(group_link,headers=burp0_headers)
+            topics = await _topics(page_1)
+            topic_list.extend(topics)
+            print(page_1)
+            page_2_link = _topic_page_2(page_1)
+            # print('2 link is              ',page_1,page_2_link)
+            page_2_content = await async_get_response(page_2_link,burp0_headers)
+            page_2 = BeautifulSoup(page_2_content, 'html.parser')
 
-    # pprint(topic_list)
-    # return topic_list
-    # yield topic_list
+            next_page = [ span.a['href'] for span in page_2.find_all('link',attrs={'rel':'next'})][0]
+            while True:
+                if crawler_page >= 5:
+                    break
+                if next_page:
+                    time.sleep(sleep_time)
+                    # page_2 = requests.get(next_page, headers=burp0_headers)
+                    page_2 = await async_get_response(next_page,headers=burp0_headers)
+                    topics = await _topics(page_2)
+                    topic_list.extend(topics)
+                    pprint(topics)
+                    # topic_list.extend(await _topics(page_2.text))
+                    page_next = BeautifulSoup(page_2, 'html.parser')
+                    next_page = [span.a['href'] for span in page_next.find_all('link', attrs={'rel': 'next'})][0]
+                else:
+                    break
+                crawler_page += 1
+            res_queue.put_nowait(topic_list)
+            return topic_list
+    put_q = asyncio.Queue()
+    res_q = asyncio.Queue()
+    [put_q.put_nowait(group_link) for group_link in group_links]
+    loop = asyncio.get_event_loop()
+    tasks = [run(put_q,res_q) for task_id in range(1) ]
+    loop.run_until_complete(asyncio.wait(tasks))
+    loop.close()
+    res_return = []
+
 
 def crawler(grouplist):
     pool = multiprocessing.Pool(3)
@@ -194,13 +229,9 @@ def make_get_or_rotate_series(group_links):
 if __name__ == '__main__':
     start = time.time()
     # # crawler(group_test)
+    num = 0
 
-    # for group_link in group_test:
-    #     for i in  worker(group_link):
-    #         for j in i:
-    #             pprint(j)
-
-
+    topics = worker(group_test)
 
 
     end = time.time()
